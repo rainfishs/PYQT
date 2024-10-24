@@ -173,12 +173,10 @@ class Main(QMainWindow, Ui_MainWindow):
 
         # 偵測移除 USB Driver
         for i in range(len(self.usblist)):
-            if not os.path.exists(self.usblist[i]):
+            ci = self.usbDriveList.currentItem()
+            if not os.path.exists(self.usblist[i]) and ci is not None:
                 # 如果當前選擇的 USB Driver 被移除，則disable 開始備份按鈕
-                if (
-                    self.usbDriveList.currentItem().text().split(" ")[0]
-                    == self.usblist[i]
-                ):
+                if ci.text().split(" ")[0] == self.usblist[i]:
                     self.startBackupBtn.setEnabled(False)
                 self.usblist.pop(i)
                 self.usbDriveList.takeItem(i)
@@ -213,8 +211,12 @@ class Main(QMainWindow, Ui_MainWindow):
 import logging
 import traceback
 
+appdata = os.getenv("LOCALAPPDATA")
+assert appdata is not None
+log_dir = os.path.join(appdata, "Rainfish_USB_Backup")
+os.makedirs(log_dir, exist_ok=True)
 logging.basicConfig(
-    filename="error.log",
+    filename=os.path.join(log_dir, "error.log"),
     level=logging.ERROR,
     filemode="a",
     encoding="utf-8",

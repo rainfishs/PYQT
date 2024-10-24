@@ -37,3 +37,14 @@
 - UI
     - 重新布局
     - 加入清除USB按鈕
+### TODO
+- other
+    - 打包程式
+## 2024-10-24_4
+### 功能
+- Logic
+    - 打包程式完成
+    - error log 移動到 LOCALAPPDATA \ Rainfish_USB_Backup
+### TODO
+- other
+    - 使用者設定
