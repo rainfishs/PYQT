@@ -1,32 +1,14 @@
 import ctypes
 import datetime
 import os
+import sys
 import time
 
 import config
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, pyqtSignal
+from filemanager import BackupRunnable
+from PyQt6.QtCore import QThreadPool, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from ui import Ui_MainWindow
-
-
-class WorkerSignals(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int)
-
-
-class BackupRunnable(QRunnable):
-    def __init__(self, source, destination):
-        super().__init__()
-        self.source = source
-        self.destination = destination
-        self.signals = WorkerSignals()
-
-    def run(self):
-        # 這裡放置您的備份邏輯
-        for i in range(10):
-            time.sleep(1)  # 模擬耗時操作
-            self.signals.progress.emit((i + 1) * 10)
-        self.signals.finished.emit()
 
 
 class Main(QMainWindow, Ui_MainWindow):
@@ -41,6 +23,7 @@ class Main(QMainWindow, Ui_MainWindow):
         self.threadpool = QThreadPool()
         self.isprogress = False
         self.startprogresstime = 0
+        self.progressvalue = 0
 
         # widget setting
         self.startBackupBtn.setEnabled(False)
@@ -53,6 +36,8 @@ class Main(QMainWindow, Ui_MainWindow):
         self.usbeventloop = QTimer()
         self.usbeventloop.timeout.connect(self.update_usb)
         self.usbeventloop.start(1000)
+        self.nowtimeloop = QTimer()
+        self.nowtimeloop.timeout.connect(self.update_time)
 
         # widget callback binding
         self.startBackupBtn.clicked.disconnect()
@@ -69,22 +54,18 @@ class Main(QMainWindow, Ui_MainWindow):
         destination = os.getcwd()
         if config.BACKUP_PATH[0] == ".":
             destination = os.path.join(destination, config.BACKUP_PATH[1:])
-        destination = os.path.join(destination, config.BACKUP_GROUP_DEFAULT)
+        destination = os.path.join(destination, self.grounpName.toPlainText())
         print(source, destination)
-        # 驗證兩個路徑都合法
-        try:
-            os.stat(source)
-            os.stat(destination)
-        except Exception as e:
-            print(e)
-            return
         # 儲存路徑不存在則創建
         if not os.path.exists(destination):
             os.makedirs(destination)
+
         # 創建 BackupRunnable 實例
         backup_task = BackupRunnable(source, destination)
         backup_task.signals.finished.connect(self.on_backup_finished)
         backup_task.signals.progress.connect(self.update_progress)
+        backup_task.signals.other.connect(self.statusBar().showMessage)
+        # backup_task.signals.other.connect(self.messageBox.append)
 
         # 加入線程池
         self.threadpool.start(backup_task)
@@ -92,9 +73,11 @@ class Main(QMainWindow, Ui_MainWindow):
         # 禁用按鈕，防止重複點擊
         self.isprogress = True
         self.isBackupBtnEnable()
-        self.messageBox.setText(
+        self.messageBox.append(
             "開始備份！ \t" + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
         )
+
+        self.nowtimeloop.start(1000)
 
         self.progressBar.show()
         self.labelTime.show()
@@ -102,31 +85,45 @@ class Main(QMainWindow, Ui_MainWindow):
         self.progressBar.setValue(0)
         self.labelTime.setText("00:00:00 / 00:00:00")  # 剩餘時間 / 經過時間
         self.startprogresstime = time.time()
+        self.progressvalue = 0
 
     def on_backup_finished(self):
         self.isprogress = False
         self.isBackupBtnEnable()
+        self.nowtimeloop.stop()
         # self.messageBox.setText("檔案備份完成！")
         self.messageBox.append(
-            "檔案備份完成！ \t" + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
+            "備份完成！ \t" + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
         )
+        self.statusBar().showMessage("")
 
     def update_progress(self, value):
-        self.progressBar.setValue(value)
+        self.progressvalue = value
+        self.progressBar.setValue(int(value))
         # print(f"備份進度: {value}%")
-        self.messageBox.append(
-            f"備份進度: {value}% \t"
-            + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
-        )
+        # self.messageBox.append(
+        #     f"備份進度: {value}% \t"
+        #     + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
+        # )
         # 計算剩餘時間
-        elapsedtime = int(time.time() - self.startprogresstime)
-        remainingtime = int((100 - value) * elapsedtime / value)
+        # elapsedtime = int(time.time() - self.startprogresstime)
+        # remainingtime = int((100 - value) * elapsedtime / value)
         # self.labelTime.setText(
         #     f"{datetime.timedelta(seconds=remainingtime)} / {datetime.timedelta(seconds=elapsedtime)}"
         # )
         # format time
+        # self.labelTime.setText(
+        #     f"{datetime.datetime.fromtimestamp(remainingtime, datetime.timezone.utc).strftime('%H:%M:%S')} / {datetime.datetime.fromtimestamp(elapsedtime, datetime.timezone.utc).strftime('%H:%M:%S')}"
+        # )
+
+    def update_time(self):
+        # 計算剩餘時間
+        elapsedtime = int(time.time() - self.startprogresstime)
+        remainingtime = int(
+            (100 - self.progressvalue) * elapsedtime / self.progressvalue
+        )
         self.labelTime.setText(
-            f"{datetime.datetime.fromtimestamp(remainingtime, datetime.timezone.utc).strftime('%H:%M:%S')} / {datetime.datetime.fromtimestamp(elapsedtime, datetime.timezone.utc).strftime('%H:%M:%S')}"
+            f"{datetime.timedelta(seconds=remainingtime)} / {datetime.timedelta(seconds=elapsedtime)}"
         )
 
     # BackupBtn Enable 判斷
@@ -141,6 +138,9 @@ class Main(QMainWindow, Ui_MainWindow):
     # 選擇 USB Drive callback
     def on_usbDriveList_itemClicked(self, item):
         self.isBackupBtnEnable()
+        self.messageBox.append(
+            "已選擇 " + item.text() + "\n 請設定分類名稱，按下開始備份"
+        )
         print(item.text())
 
     def update_usb(self):
@@ -174,7 +174,7 @@ class Main(QMainWindow, Ui_MainWindow):
                     self.usbDriveList.currentItem().text().split(" ")[0]
                     == self.usblist[i]
                 ):
-                    self.isBackupBtnEnable()
+                    self.startBackupBtn.setEnabled(False)
                 self.usblist.pop(i)
                 self.usbDriveList.takeItem(i)
                 break
@@ -184,10 +184,32 @@ class Main(QMainWindow, Ui_MainWindow):
         self.isBackupBtnEnable()
 
 
-if __name__ == "__main__":
-    import sys
+import logging
+import traceback
 
+logging.basicConfig(
+    filename="error.log",
+    level=logging.ERROR,
+    filemode="a",
+    encoding="utf-8",
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",  # 指定日期時間格式
+)
+
+erra = []
+
+
+def exception_hook(exctype: type, value: BaseException, tb):
+    exc = "".join(traceback.format_exception(exctype, value, tb))
+    logging.error(f"未捕獲例外: {exc}")
+    erra.append("發生未預期錯誤，請聯繫開發者")
+    # traceback.print_exception(exctype, value, tb)
+
+
+if __name__ == "__main__":
+    sys.excepthook = exception_hook
     app = QApplication(sys.argv)
     MainWindow = Main()
+    erra = MainWindow.messageBox
     MainWindow.show()
     sys.exit(app.exec())
