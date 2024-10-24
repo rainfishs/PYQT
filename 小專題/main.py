@@ -3,9 +3,10 @@ import datetime
 import os
 import sys
 import time
+from turtle import back
 
 import config
-from filemanager import BackupRunnable
+from filemanager import BackupRunnable, UsbDeviceClear
 from PyQt6.QtCore import QThreadPool, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from ui import Ui_MainWindow
@@ -31,6 +32,7 @@ class Main(QMainWindow, Ui_MainWindow):
         self.progressBar.hide()
         self.labelTime.hide()
         self.label2.hide()
+        self.clearUsbBtn.hide()
 
         # timer
         self.usbeventloop = QTimer()
@@ -42,9 +44,11 @@ class Main(QMainWindow, Ui_MainWindow):
         # widget callback binding
         self.startBackupBtn.clicked.disconnect()
         self.usbDriveList.itemClicked.disconnect()
+        self.clearUsbBtn.clicked.disconnect()
         self.startBackupBtn.clicked.connect(self.on_startBackupBtn_clicked)
         self.usbDriveList.itemClicked.connect(self.on_usbDriveList_itemClicked)
         self.grounpName.textChanged.connect(self.on_grounpName_textChanged)
+        self.clearUsbBtn.clicked.connect(self.on_clearUsbBtn_clicked)
 
     # 開始備份 callback
     def on_startBackupBtn_clicked(self):
@@ -96,6 +100,7 @@ class Main(QMainWindow, Ui_MainWindow):
             "備份完成！ \t" + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
         )
         self.statusBar().showMessage("")
+        self.clearUsbBtn.show()
 
     def update_progress(self, value):
         self.progressvalue = value
@@ -182,6 +187,27 @@ class Main(QMainWindow, Ui_MainWindow):
     # 分類名稱變更事件
     def on_grounpName_textChanged(self):
         self.isBackupBtnEnable()
+
+    # 清除 USB 內容
+    def on_clearUsbBtn_clicked(self):
+        # 取得選擇的 USB Driver
+        source = self.usbDriveList.currentItem().text().split(" ")[0]
+        backtask = UsbDeviceClear(source)
+        backtask.signals.finished.connect(self.on_clearUsb_finished)
+        backtask.signals.other.connect(self.statusBar().showMessage)
+        self.threadpool.start(backtask)
+        self.clearUsbBtn.setEnabled(False)
+        self.messageBox.append(
+            "開始清除 USB 內容！ \t"
+            + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
+        )
+
+    def on_clearUsb_finished(self):
+        self.clearUsbBtn.hide()
+        self.messageBox.append(
+            "清除 USB 內容完成！ \t"
+            + datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d")
+        )
 
 
 import logging

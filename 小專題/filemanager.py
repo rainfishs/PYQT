@@ -13,7 +13,7 @@ def are_files_equal(file1, file2):
     return stat1.st_size == stat2.st_size and stat1.st_mtime == stat2.st_mtime
 
 
-class WorkerSignals(QObject):
+class BackUpSignals(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(float)
     other = pyqtSignal(str)
@@ -24,7 +24,7 @@ class BackupRunnable(QRunnable):
         super().__init__()
         self.source = source
         self.destination = destination
-        self.signals = WorkerSignals()
+        self.signals = BackUpSignals()
 
     def run(self):
         # 先統計檔案數量
@@ -112,3 +112,33 @@ class BackupRunnable(QRunnable):
         #     time.sleep(1)  # 模擬耗時操作
         #     self.signals.progress.emit((i + 1) * 10)
         # self.signals.finished.emit()
+
+
+class UsbDeviceClear(QRunnable):
+    def __init__(self, source):
+        super().__init__()
+        self.source = source
+        self.signals = BackUpSignals()
+
+    def run(self):
+        # 先統計檔案數量
+        file_count = 0
+        for root, dirs, files in os.walk(self.source):
+            file_count += len(files)
+        self.signals.other.emit(f"檔案總數: {file_count}")
+        # 開始刪除 直接刪除根目錄的所有檔案 + 資料夾
+        for root, dirs, files in os.walk(self.source):
+            for f in files:
+                source_path = os.path.join(root, f)
+                self.signals.other.emit(f"正在刪除:{source_path}")
+                os.remove(source_path)
+            for d in dirs:
+                source_path = os.path.join(root, d)
+                self.signals.other.emit(f"正在刪除:{source_path}")
+                try:
+                    shutil.rmtree(source_path)
+                except PermissionError:
+                    self.signals.other.emit(f"刪除失敗:{source_path}")
+                except Exception as e:
+                    raise e
+        self.signals.finished.emit()
